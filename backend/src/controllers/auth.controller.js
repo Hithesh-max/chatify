@@ -1,7 +1,8 @@
 import bcrypt from "bcryptjs";
 import db from "../lib/db.js";
 import { generateToken } from "../lib/utils.js";
-
+import { sendWelcomeEmail } from "../emails/emailHandlers.js";
+import { ENV } from "../lib/env.js";
 export const signup = async (req, res) => {
   const { fullName, email, password } = req.body;
 
@@ -47,6 +48,16 @@ export const signup = async (req, res) => {
 
     generateToken(newUser.id, res);
 
+    try {
+      await sendWelcomeEmail(
+        newUser.email,
+        newUser.fullName,
+        ENV.CLIENT_URL
+      );
+    } catch (error) {
+      console.error("Failed to send welcome email:", error);
+    }
+
     res.status(201).json({
       id: newUser.id,
       fullName: newUser.fullName,
@@ -58,6 +69,8 @@ export const signup = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
+
 
 export const login = async (req, res) => {
   const { email, password } = req.body;
@@ -101,7 +114,7 @@ export const logout = (req, res) => {
     res.cookie("jwt", "", {
       maxAge: 0,
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: ENV.NODE_ENV === "production",
       sameSite: "strict",
    });
      res.status(200).json({ message: "Logged out successfully" });
