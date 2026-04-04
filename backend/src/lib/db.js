@@ -14,6 +14,19 @@ db.prepare(`
   )
 `).run();
 
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    senderId INTEGER NOT NULL,
+    receiverId INTEGER NOT NULL,
+    text TEXT,
+    image TEXT,
+    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (senderId) REFERENCES users(id),
+    FOREIGN KEY (receiverId) REFERENCES users(id)
+  )
+`).run();
+
 console.log("SQLite connected");
 
 export default db;
