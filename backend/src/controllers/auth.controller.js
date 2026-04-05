@@ -4,6 +4,7 @@ import { generateToken } from "../lib/utils.js";
 import { sendWelcomeEmail } from "../emails/emailHandlers.js";
 import { ENV } from "../lib/env.js";
 import cloudinary from "../lib/cloudinary.js";
+import User from "../models/User.js";
 export const signup = async (req, res) => {
   const { fullName, email, password } = req.body;
 
@@ -131,7 +132,7 @@ export const updateProfile = async (req, res) => {
     const { profilePic } = req.body;
     if (!profilePic) return res.status(400).json({ message: "Profile pic is required" });
 
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     const uploadResponse = await cloudinary.uploader.upload(profilePic);
 
