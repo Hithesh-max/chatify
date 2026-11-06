@@ -1,2 +1,8 @@
-node_modules
+node_modules/
+frontend/dist/
+backend/.env
+backend/database.sqlite
+backend/database.sqlite-shm
+backend/database.sqlite-wal
+backend/uploads/
 .env

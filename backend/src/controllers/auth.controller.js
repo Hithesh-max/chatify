@@ -1,233 +1,68 @@
 import bcrypt from "bcryptjs";
 import db from "../lib/db.js";
-import { generateToken } from "../lib/utils.js";
-import { sendWelcomeEmail } from "../emails/emailHandlers.js";
+import { generateToken, verifySession } from "../lib/utils.js";
+import { disconnectSession } from "../lib/socket.js";
 import { ENV } from "../lib/env.js";
-import cloudinary from "../lib/cloudinary.js";
-import User from "../models/User.js";
-export const signup = async (req, res) => {
-  const { fullName, email, password } = req.body;
+import { saveImage } from "../lib/uploads.js";
 
+const publicUser = (id) => db.prepare("SELECT id, fullName, email, profilePic FROM users WHERE id = ?").get(id);
+
+export async function signup(req, res) {
   try {
-    if (!fullName || !email || !password) {
-      return res.status(400).json({ message: "All fields are required" });
+    const { fullName, email, password } = req.body || {};
+    if (typeof fullName !== "string" || !fullName.trim() || fullName.trim().length > 80 ||
+        typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || email.length > 254 ||
+        typeof password !== "string" || password.length < 6 || password.length > 128) {
+      return res.status(400).json({ message: "Enter a name, valid email and password of 6–128 characters" });
     }
-
-    if (password.length < 6) {
-      return res
-        .status(400)
-        .json({ message: "Password must be at least 6 characters" });
+    const normalizedEmail = email.trim().toLowerCase();
+    if (db.prepare("SELECT 1 FROM users WHERE lower(email) = ?").get(normalizedEmail)) {
+      return res.status(409).json({ message: "That email is already registered" });
     }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ message: "Invalid email format" });
-    }
-
-    const existingUser = db
-      .prepare("SELECT * FROM users WHERE email = ?")
-      .get(email);
-
-    if (existingUser) {
-      
-       return res.status(400).json({ message: "Unable to create account. Please try again or contact support." });
-    
-
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const result = db
-      .prepare(
-        "INSERT INTO users (fullName, email, password) VALUES (?, ?, ?)"
-      )
-      .run(fullName, email, hashedPassword);
-
-    const newUser = db
-      .prepare("SELECT * FROM users WHERE id = ?")
-      .get(result.lastInsertRowid);
-
-    generateToken(newUser.id, res);
-
-    try {
-      await sendWelcomeEmail(
-        newUser.email,
-        newUser.fullName,
-        ENV.CLIENT_URL
-      );
-    } catch (error) {
-      console.error("Failed to send welcome email:", error);
-    }
-
-    res.status(201).json({
-      id: newUser.id,
-      fullName: newUser.fullName,
-      email: newUser.email,
-      profilePic: newUser.profilePic,
-    });
+    const hash = await bcrypt.hash(password, 10);
+    const result = db.prepare("INSERT INTO users (fullName, email, password) VALUES (?, ?, ?)")
+      .run(fullName.trim(), normalizedEmail, hash);
+    generateToken(Number(result.lastInsertRowid), res);
+    res.status(201).json(publicUser(result.lastInsertRowid));
   } catch (error) {
-    console.log("Error in signup controller:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
- 
-
-
-export const login = async (req, res) => {
-  const { email, password } = req.body;
-
-  try {
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
-    }
-
-    const user = db
-      .prepare("SELECT * FROM users WHERE email = ?")
-      .get(email);
-
-    if (!user) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
-
-    const isPasswordCorrect = await bcrypt.compare(password, user.password);
-
-    if (!isPasswordCorrect) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
-
-    generateToken(user.id, res);
-
-    res.status(200).json({
-      id: user.id,
-      fullName: user.fullName,
-      email: user.email,
-      profilePic: user.profilePic,
-    });
-  } catch (error) {
-    console.log("Error in login controller:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-export const logout = (req, res) => {
-  try {
-   
-    res.cookie("jwt", "", {
-      maxAge: 0,
-      httpOnly: true,
-      secure: ENV.NODE_ENV === "production",
-      sameSite: "strict",
-   });
-     res.status(200).json({ message: "Logged out successfully" });
-   } catch (error){
-    console.log("Error in logout controller:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-
-export const updateProfile = async (req, res) => {
-  try {
-    const { profilePic } = req.body;
-    if (!profilePic) return res.status(400).json({ message: "Profile pic is required" });
-
-    const userId = req.user.id;
-
-    const uploadResponse = await cloudinary.uploader.upload(profilePic);
-
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      { profilePic: uploadResponse.secure_url },
-      { new: true }
-    );
-
-    res.status(200).json(updatedUser);
-  } catch (error) {
-    console.log("Error in update profile:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-
-import User from "../models/user.model.js";
-import bycrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-
-export const signup= async (req, res) => {
-  const{fullName,email,password}=req.body;
-
-  try {
-    if( !fullName || !email || !password){
-      return res.status(400).json({message:"All fields are required"});
-    }
-    if( password.length < 6){
-      return res.status(400).json({message:"Password must be at least 6 characters"});
-    }
-    // chk if email is valid 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ message: "Invalid email format" });
-    }
-   // user already exists so... find if any email matches 
-    const user= await User.findOne({email:email});
-    if(user){
-      return res.status(400).json({message:"User already exists"});
-    }
-
-  // else crate new user
-   const salt= await bycrypt.genSalt(10);
-   // now hash the password tht user sends with the salt
-   const hashedPassword= await bycrypt.hash(password,salt);
-
-
-    const newUser= new User({
-      fullName,
-      email,
-      password:hashedPassword
-    });
-
-    if(newUser){
-
-      generateToken(newUser._id,res);
-      //200 - success
-      //201 smthing created successfully
-      //500 - internal server error
-      await newUser.save();
-      res.status(201).json({
-        _id:newUse.id,
-        fullName: newUser.fullName,
-        email: newUser.email,
-        profilePic: newUser.profilePic
-      });
-    } else{
-      res.status(400).json({message:"Invalid user data"});
-    }
-
-
-
-  } catch (error) {
-    console.log("error in signup controller",error);
-     res.status(500).json({message:"Internal server error"});
+    if (error.code === "SQLITE_CONSTRAINT_UNIQUE") return res.status(409).json({ message: "That email is already registered" });
+    console.error("Signup failed", error);
+    res.status(500).json({ message: "Could not create account" });
   }
 }
-  */
+
+export async function login(req, res) {
+  try {
+    const { email, password } = req.body || {};
+    if (typeof email !== "string" || typeof password !== "string") return res.status(400).json({ message: "Email and password are required" });
+    const user = db.prepare("SELECT * FROM users WHERE lower(email) = ?").get(email.trim().toLowerCase());
+    if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Invalid credentials" });
+    generateToken(user.id, res);
+    res.json(publicUser(user.id));
+  } catch (error) {
+    console.error("Login failed", error);
+    res.status(500).json({ message: "Could not log in" });
+  }
+}
+
+export function logout(req, res) {
+  try {
+    const session = req.cookies.jwt && verifySession(req.cookies.jwt);
+    if (session) {
+      db.prepare("DELETE FROM sessions WHERE id = ?").run(session.sessionId);
+      disconnectSession(session.sessionId);
+    }
+  } catch { /* Expired cookies may still be cleared. */ }
+  res.clearCookie("jwt", { httpOnly: true, sameSite: "lax", secure: ENV.NODE_ENV === "production", path: "/" });
+  res.json({ message: "Logged out" });
+}
+
+export function updateProfile(req, res) {
+  try {
+    const image = saveImage(req.body?.profilePic);
+    db.prepare("UPDATE users SET profilePic = ? WHERE id = ?").run(image, req.user.id);
+    res.json(publicUser(req.user.id));
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+}

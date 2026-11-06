@@ -24,14 +24,17 @@ function ContactList() {
           <div className="flex items-center gap-3">
             <div
               className={`avatar ${
-                onlineUsers.includes(contact._id ?? contact.id) ? "online" : "offline"
+                onlineUsers.includes(String(contact.id)) ? "online" : "offline"
               }`}
             >
               <div className="size-12 rounded-full">
-                <img src={contact.profilePic || "/avatar.png"} />
+                <img src={contact.profilePic || "/avatar.png"} alt={contact.fullName} onError={(e) => { e.currentTarget.src = "/avatar.png"; }} />
               </div>
             </div>
-            <h4 className="text-slate-200 font-medium">{contact.fullName}</h4>
+            <div className="min-w-0">
+              <h4 className="text-slate-200 font-medium truncate">{contact.fullName}</h4>
+              <p className="text-slate-400 text-xs">{onlineUsers.includes(String(contact.id)) ? "Online" : "Offline"}</p>
+            </div>
           </div>
         </div>
       ))}

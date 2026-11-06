@@ -1,119 +1,51 @@
-import cloudinary from "../lib/cloudinary.js";
 import db from "../lib/db.js";
+import { saveImage } from "../lib/uploads.js";
+import { emitMessage } from "../lib/socket.js";
 
-export const getAllContacts = async (req, res) => {
-  try {
-    const loggedInUserId = req.user.id;
-    const filteredUsers = db
-      .prepare(
-        "SELECT id, fullName, email, profilePic FROM users WHERE id != ? ORDER BY fullName ASC"
-      )
-      .all(loggedInUserId);
+const validId = (id) => Number.isSafeInteger(Number(id)) && Number(id) > 0 && /^\d+$/.test(String(id));
 
-    res.status(200).json(filteredUsers);
-  } catch (error) {
-    console.log("Error in getAllContacts:", error);
-    res.status(500).json({ message: "Server error" });
+export function getAllContacts(req, res) {
+  const users = db.prepare("SELECT id, fullName, email, profilePic FROM users WHERE id != ? ORDER BY fullName").all(req.user.id);
+  res.json(users);
+}
+
+export function getMessagesByUserId(req, res) {
+  if (!validId(req.params.id)) return res.status(400).json({ message: "Invalid user id" });
+  const otherId = Number(req.params.id);
+  if (otherId === req.user.id) return res.status(400).json({ message: "Choose another user" });
+  if (!db.prepare("SELECT 1 FROM users WHERE id = ?").get(otherId)) return res.status(404).json({ message: "User not found" });
+  const messages = db.prepare(`SELECT id, senderId, receiverId, text, image, createdAt FROM messages
+    WHERE (senderId = ? AND receiverId = ?) OR (senderId = ? AND receiverId = ?) ORDER BY id ASC`)
+    .all(req.user.id, otherId, otherId, req.user.id);
+  res.json(messages);
+}
+
+export function sendMessage(req, res) {
+  const receiverId = Number(req.params.id);
+  if (!validId(req.params.id) || receiverId === req.user.id) return res.status(400).json({ message: "Invalid receiver" });
+  if (!db.prepare("SELECT 1 FROM users WHERE id = ?").get(receiverId)) return res.status(404).json({ message: "Receiver not found" });
+  const { text, image } = req.body || {};
+  if (typeof text !== "string" || text.length > 2000 || (image != null && typeof image !== "string") || (!text.trim() && !image)) {
+    return res.status(400).json({ message: "Enter a message of up to 2000 characters or choose an image" });
   }
-};
-
-export const getMessagesByUserId = async (req, res) => {
+  let imageUrl = null;
   try {
-    const myId = req.user.id;
-    const userToChatId = Number(req.params.id);
-
-    if (Number.isNaN(userToChatId)) {
-      return res.status(400).json({ message: "Invalid user id" });
-    }
-
-    const messages = db
-      .prepare(
-        `SELECT id, senderId, receiverId, text, image, createdAt
-         FROM messages
-         WHERE (senderId = ? AND receiverId = ?)
-            OR (senderId = ? AND receiverId = ?)
-         ORDER BY datetime(createdAt) ASC, id ASC`
-      )
-      .all(myId, userToChatId, userToChatId, myId);
-
-    res.status(200).json(messages);
+    if (image) imageUrl = saveImage(image);
+    const result = db.prepare("INSERT INTO messages (senderId, receiverId, text, image) VALUES (?, ?, ?, ?)")
+      .run(req.user.id, receiverId, text.trim() || null, imageUrl);
+    const message = db.prepare("SELECT id, senderId, receiverId, text, image, createdAt FROM messages WHERE id = ?").get(result.lastInsertRowid);
+    emitMessage(message);
+    res.status(201).json(message);
   } catch (error) {
-    console.log("Error in getMessages controller: ", error.message);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("Send failed", error);
+    res.status(400).json({ message: error.message });
   }
-};
+}
 
-export const sendMessage = async (req, res) => {
-  try {
-    const { text, image } = req.body;
-    const receiverId = Number(req.params.id);
-    const senderId = req.user.id;
-
-    if (!text && !image) {
-      return res.status(400).json({ message: "Text or image is required." });
-    }
-    if (Number.isNaN(receiverId)) {
-      return res.status(400).json({ message: "Invalid receiver id." });
-    }
-    if (senderId === receiverId) {
-      return res.status(400).json({ message: "Cannot send messages to yourself." });
-    }
-    const receiverExists = db
-      .prepare("SELECT id FROM users WHERE id = ?")
-      .get(receiverId);
-
-    if (!receiverExists) {
-      return res.status(404).json({ message: "Receiver not found." });
-    }
-
-    let imageUrl;
-    if (image) {
-      // upload base64 image to cloudinary
-      const uploadResponse = await cloudinary.uploader.upload(image);
-      imageUrl = uploadResponse.secure_url;
-    }
-
-    const result = db
-      .prepare(
-        `INSERT INTO messages (senderId, receiverId, text, image)
-         VALUES (?, ?, ?, ?)`
-      )
-      .run(senderId, receiverId, text ?? null, imageUrl ?? null);
-
-    const newMessage = db
-      .prepare(
-        `SELECT id, senderId, receiverId, text, image, createdAt
-         FROM messages
-         WHERE id = ?`
-      )
-      .get(result.lastInsertRowid);
-
-    res.status(201).json(newMessage);
-  } catch (error) {
-    console.log("Error in sendMessage controller: ", error.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
-
-export const getChatPartners = async (req, res) => {
-  try {
-    const loggedInUserId = req.user.id;
-
-    const chatPartners = db
-      .prepare(
-        `SELECT DISTINCT u.id, u.fullName, u.email, u.profilePic
-         FROM users u
-         JOIN messages m
-           ON (u.id = m.senderId AND m.receiverId = ?)
-           OR (u.id = m.receiverId AND m.senderId = ?)
-         WHERE u.id != ?
-         ORDER BY u.fullName ASC`
-      )
-      .all(loggedInUserId, loggedInUserId, loggedInUserId);
-
-    res.status(200).json(chatPartners);
-  } catch (error) {
-    console.error("Error in getChatPartners: ", error.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
+export function getChatPartners(req, res) {
+  const partners = db.prepare(`SELECT u.id, u.fullName, u.email, u.profilePic FROM users u
+    WHERE u.id != ? AND EXISTS (SELECT 1 FROM messages m WHERE (m.senderId = ? AND m.receiverId = u.id)
+    OR (m.receiverId = ? AND m.senderId = u.id)) ORDER BY u.fullName`)
+    .all(req.user.id, req.user.id, req.user.id);
+  res.json(partners);
+}

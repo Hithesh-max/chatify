@@ -7,14 +7,14 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend",
-    "start": "npm run start --prefix backend"
+    "setup": "node scripts/setup.mjs",
+    "dev": "node scripts/dev.mjs",
+    "build": "npm ci --prefix backend && npm ci --prefix frontend && npm run build --prefix frontend",
+    "start": "node scripts/start.mjs",
+    "test": "node --test backend/test/*.test.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "devDependencies": {
-    "nodemon": "^3.1.14"
-  }
+  "type": "commonjs"
 }

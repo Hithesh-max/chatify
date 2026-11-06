@@ -1,45 +1,36 @@
 import { Server } from "socket.io";
-import http from "http";
+import http from "node:http";
 import express from "express";
 import { ENV } from "./env.js";
 import { socketAuthMiddleware } from "../middleware/socket.auth.middleware.js";
 
-const app = express();
-const server = http.createServer(app);
-
-const io = new Server(server, {
-  cors: {
-    origin: [ENV.CLIENT_URL],
-    credentials: true,
-  },
+export const app = express();
+export const server = http.createServer(app);
+export const io = new Server(server, {
+  cors: ENV.CLIENT_URL ? { origin: ENV.CLIENT_URL, credentials: true } : undefined,
 });
-
-// apply authentication middleware to all socket connections
+const connections = new Map(); // user id -> Set of socket ids, supports multiple tabs
 io.use(socketAuthMiddleware);
-
-// we will use this function to check if the user is online or not
-export function getReceiverSocketId(userId) {
-  return userSocketMap[userId];
-}
-
-// this is for storig online users
-const userSocketMap = {}; // {userId:socketId}
-
 io.on("connection", (socket) => {
-  console.log("A user connected", socket.user.fullName);
+  const id = String(socket.user.id);
+  socket.join(`user:${id}`);
+  socket.join(`session:${socket.sessionId}`);
+  const sockets = connections.get(id) || new Set();
+  sockets.add(socket.id);
+  connections.set(id, sockets);
+  io.emit("getOnlineUsers", [...connections.keys()]);
 
-  const userId = socket.userId;
-  userSocketMap[userId] = socket.id;
-
-  // io.emit() is used to send events to all connected clients
-  io.emit("getOnlineUsers", Object.keys(userSocketMap));
-
-  // with socket.on we listen for events from clients
   socket.on("disconnect", () => {
-    console.log("A user disconnected", socket.user.fullName);
-    delete userSocketMap[userId];
-    io.emit("getOnlineUsers", Object.keys(userSocketMap));
+    sockets.delete(socket.id);
+    if (!sockets.size) connections.delete(id);
+    io.emit("getOnlineUsers", [...connections.keys()]);
   });
 });
 
-export { io, app, server };
+export function disconnectSession(sessionId) {
+  io.in(`session:${sessionId}`).disconnectSockets(true);
+}
+
+export function emitMessage(message) {
+  io.to(`user:${message.receiverId}`).to(`user:${message.senderId}`).emit("newMessage", message);
+}

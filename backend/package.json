@@ -12,20 +12,15 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@arcjet/inspect": "^1.0.0-beta.10",
-    "@arcjet/node": "^1.0.0-beta.10",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^12.6.2",
-    "cloudinary": "^2.5.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
-    "mongodb": "^4.17.2",
-    "mongoose": "^8.10.1",
-    "resend": "^6.0.2",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "cookie": "^0.7.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.11"

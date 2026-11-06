@@ -6,7 +6,7 @@ import { useChatStore } from "../store/useChatStore";
 const mouseClickSound = new Audio("/sounds/mouse-click.mp3");
 
 function ProfileHeader() {
-  const { logout, authUser, updateProfile } = useAuthStore();
+  const { logout, authUser, updateProfile, onlineUsers } = useAuthStore();
   const { isSoundEnabled, toggleSound } = useChatStore();
   const [selectedImg, setSelectedImg] = useState(null);
 
@@ -15,6 +15,7 @@ function ProfileHeader() {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 4 * 1024 * 1024) return;
 
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -22,7 +23,8 @@ function ProfileHeader() {
     reader.onloadend = async () => {
       const base64Image = reader.result;
       setSelectedImg(base64Image);
-      await updateProfile({ profilePic: base64Image });
+      const saved = await updateProfile({ profilePic: base64Image });
+      if (!saved) setSelectedImg(null);
     };
   };
 
@@ -39,6 +41,7 @@ function ProfileHeader() {
               <img
                 src={selectedImg || authUser.profilePic || "/avatar.png"}
                 alt="User image"
+                onError={(e) => { e.currentTarget.src = "/avatar.png"; }}
                 className="size-full object-cover"
               />
               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
@@ -61,7 +64,7 @@ function ProfileHeader() {
               {authUser.fullName}
             </h3>
 
-            <p className="text-slate-400 text-xs">Online</p>
+            <p className="text-slate-400 text-xs">{onlineUsers.includes(String(authUser.id)) ? "Online" : "Offline"}</p>
           </div>
         </div>
 

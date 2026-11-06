@@ -12,21 +12,16 @@ function ChatContainer() {
     getMessagesByUserId,
     messages,
     isMessagesLoading,
-    subscribeToMessages,
-    unsubscribeFromMessages,
   } = useChatStore();
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
-  const selectedUserId = selectedUser?._id ?? selectedUser?.id;
-  const authUserId = authUser?._id ?? authUser?.id;
+  const selectedUserId = selectedUser?.id;
+  const authUserId = authUser?.id;
 
   useEffect(() => {
     getMessagesByUserId(selectedUserId);
-    subscribeToMessages();
 
-    // clean up
-    return () => unsubscribeFromMessages();
-  }, [selectedUserId, getMessagesByUserId, subscribeToMessages, unsubscribeFromMessages]);
+  }, [selectedUserId, getMessagesByUserId]);
 
   useEffect(() => {
     if (messageEndRef.current) {
@@ -42,12 +37,12 @@ function ChatContainer() {
           <div className="max-w-3xl mx-auto space-y-6">
             {messages.map((msg) => (
               <div
-                key={msg._id ?? msg.id}
-                className={`chat ${msg.senderId === authUserId ? "chat-end" : "chat-start"}`}
+                key={msg.id}
+                className={`chat ${Number(msg.senderId) === Number(authUserId) ? "chat-end" : "chat-start"}`}
               >
                 <div
                   className={`chat-bubble relative ${
-                    msg.senderId === authUserId
+                    Number(msg.senderId) === Number(authUserId)
                       ? "bg-cyan-600 text-white"
                       : "bg-slate-800 text-slate-200"
                   }`}
@@ -57,7 +52,7 @@ function ChatContainer() {
                   )}
                   {msg.text && <p className="mt-2">{msg.text}</p>}
                   <p className="text-xs mt-1 opacity-75 flex items-center gap-1">
-                    {new Date(msg.createdAt).toLocaleTimeString(undefined, {
+                    {new Date(msg.createdAt.includes("T") ? msg.createdAt : `${msg.createdAt.replace(" ", "T")}Z`).toLocaleTimeString(undefined, {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}
